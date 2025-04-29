@@ -5,10 +5,15 @@
 package repository
 
 import (
-	"github.com/google/uuid"
+	"time"
 )
 
 type User struct {
-	ID    uuid.UUID `json:"id"`
-	Email string    `json:"email"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Username  *string   `json:"username"`
+	FirstName *string   `json:"first_name"`
+	LastName  *string   `json:"last_name"`
+	AddedAt   time.Time `json:"added_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

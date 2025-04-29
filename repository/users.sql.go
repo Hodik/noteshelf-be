@@ -7,12 +7,48 @@ package repository
 
 import (
 	"context"
-
-	"github.com/google/uuid"
+	"time"
 )
 
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (id, username, first_name, last_name, added_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, email, username, first_name, last_name, added_at, updated_at
+`
+
+type CreateUserParams struct {
+	ID        string    `json:"id"`
+	Username  *string   `json:"username"`
+	FirstName *string   `json:"first_name"`
+	LastName  *string   `json:"last_name"`
+	AddedAt   time.Time `json:"added_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUser,
+		arg.ID,
+		arg.Username,
+		arg.FirstName,
+		arg.LastName,
+		arg.AddedAt,
+		arg.UpdatedAt,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Username,
+		&i.FirstName,
+		&i.LastName,
+		&i.AddedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getAllUsers = `-- name: GetAllUsers :many
-SELECT id, email FROM users
+SELECT id, email, username, first_name, last_name, added_at, updated_at FROM users
 `
 
 func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
@@ -24,7 +60,15 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 	var items []User
 	for rows.Next() {
 		var i User
-		if err := rows.Scan(&i.ID, &i.Email); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Username,
+			&i.FirstName,
+			&i.LastName,
+			&i.AddedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -36,13 +80,21 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, email FROM users
+SELECT id, email, username, first_name, last_name, added_at, updated_at FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserById(ctx context.Context, id uuid.UUID) (User, error) {
+func (q *Queries) GetUserById(ctx context.Context, id string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserById, id)
 	var i User
-	err := row.Scan(&i.ID, &i.Email)
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Username,
+		&i.FirstName,
+		&i.LastName,
+		&i.AddedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -8,12 +9,27 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/Hodik/noteshelf-be.git/repository"
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/jwt"
+	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-  "github.com/clerk/clerk-sdk-go/v2/user"
 )
+
+var dbPool *pgxpool.Pool
+
+func setupDB() error {
+	log.Println("connecting to ", os.Getenv("POSTGRESQL_URL"))
+	var err error
+	dbPool, err = pgxpool.New(context.Background(), os.Getenv("POSTGRESQL_URL"))
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -25,35 +41,40 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		parts := strings.Split(authheader, " ")
 
-		if parts[0] != "Bearer" || len(parts) != 2 { 
+		if parts[0] != "Bearer" || len(parts) != 2 {
 			c.AbortWithStatus(http.StatusNotAcceptable)
 			return
 		}
 
-    claims, err := jwt.Verify(c, &jwt.VerifyParams{
-      Token: parts[1],
-    })
-    if err != nil {
-      c.AbortWithStatus(http.StatusUnauthorized)
-      return
-    }
+		claims, err := jwt.Verify(c, &jwt.VerifyParams{
+			Token: parts[1],
+		})
+		if err != nil {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
 
-    fmt.Println(claims.Subject)
+		fmt.Println(claims.Subject)
 
-    usr, err := user.Get(c, claims.Subject)
-    fmt.Println(usr)
+		usr, err := user.Get(c, claims.Subject)
+		fmt.Println(usr)
 		c.Set("user", claims.Subject)
 		c.Next()
 	}
 }
 
-func main() {
-  fmt.Println("here")
+func syncUser(usr *clerk.User) *repository.User {
+	return &repository.User{ID: usr.ID, Username: usr.Username, Firstname: usr.FirstName, Lastname: usr.LastName, CreatedAt: usr.CreatedAt, UpadatedAt: usr.UpdatedAt}
+}
 
-  if err := godotenv.Load(); err != nil {
-    log.Fatalf("failed to load env variables")
-  }
-  clerk.SetKey(os.Getenv("CLERK_SECRET_KEY"))
+func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("failed to load env variables")
+	}
+	clerk.SetKey(os.Getenv("CLERK_SECRET_KEY"))
+	if err := setupDB(); err != nil {
+		log.Fatalf("failed to setup db connections", err)
+	}
 
 	router := gin.Default()
 

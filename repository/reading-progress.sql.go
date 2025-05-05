@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createReadingProgress = `-- name: CreateReadingProgress :one
@@ -51,19 +50,25 @@ func (q *Queries) DeteleReadingProgress(ctx context.Context, arg DeteleReadingPr
 
 const updateReadingProgress = `-- name: UpdateReadingProgress :one
 UPDATE reading_progress 
-SET current_page=slqc.arg(current_page), percentage_complete=$1 
-WHERE book_id = $2 AND user_id = $3
+SET current_page=$1, percentage_complete=$2 
+WHERE book_id = $3 AND user_id = $4
 RETURNING user_id, book_id, current_page, percentage_complete, last_read_at
 `
 
 type UpdateReadingProgressParams struct {
-	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
-	BookID             uuid.UUID      `json:"book_id"`
-	UserID             string         `json:"user_id"`
+	CurrentPage        int32     `json:"current_page"`
+	PercentageComplete float64   `json:"percentage_complete"`
+	BookID             uuid.UUID `json:"book_id"`
+	UserID             string    `json:"user_id"`
 }
 
 func (q *Queries) UpdateReadingProgress(ctx context.Context, arg UpdateReadingProgressParams) (ReadingProgress, error) {
-	row := q.db.QueryRow(ctx, updateReadingProgress, arg.PercentageComplete, arg.BookID, arg.UserID)
+	row := q.db.QueryRow(ctx, updateReadingProgress,
+		arg.CurrentPage,
+		arg.PercentageComplete,
+		arg.BookID,
+		arg.UserID,
+	)
 	var i ReadingProgress
 	err := row.Scan(
 		&i.UserID,

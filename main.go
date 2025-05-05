@@ -246,7 +246,7 @@ func generateUploadUrlHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"presigned_url": url})
 }
 
-type ConfirmBookUpload struct {
+type ConfirmBookUploadRequest struct {
 	Title      string `json:"title" binding:"required"`
 	Author     string `json:"author"`
 	S3Key      string `json:"s3_key"`
@@ -259,7 +259,7 @@ func confirmBookUpload(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
 
-	var req ConfirmBookUpload
+	var req ConfirmBookUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -275,12 +275,46 @@ func confirmBookUpload(c *gin.Context) {
 	c.JSON(http.StatusOK, book)
 }
 
+type UpdateReadingProgressRequest struct {
+	CurrentPage int `json:"current_page" binding:"required"`
+}
 
-type UpdateReadingProgress struct {
-	Title      string `json:"title" binding:"required"`
-	Author     string `json:"author"`
-	S3Key      string `json:"s3_key"`
-	TotalPages int    `json:"total_pages"`
+func updateReadingProgress(c *gin.Context) {
+	bookID := c.Param("book_id")
+	dbUser, err := getDBUserFromRequest(c)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+
+	var req UpdateReadingProgressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	uuidBookID, err := uuid.Parse(bookID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	book, err := queries.GetBookByID(c, uuidBookID)
+
+	var percentageComplete float64
+	if book.TotalPages < 1 {
+		percentageComplete = 0.0
+	} else {
+		percentageComplete = float64(req.CurrentPage) / float64(book.TotalPages) * 100
+	}
+
+	readingProgress, err := queries.UpdateReadingProgress(c, repository.UpdateReadingProgressParams{CurrentPage: int32(req.CurrentPage), PercentageComplete: percentageComplete, BookID: uuidBookID, UserID: dbUser.ID})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, readingProgress)
 }
 
 func getLibraryHandler(c *gin.Context) {
@@ -295,24 +329,8 @@ func getLibraryHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-  
-  c.JSON(http.StatusOK, books)
-}
 
-func getLibraryHandler(c *gin.Context) {
-	dbUser, err := getDBUserFromRequest(c)
-	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-	}
-
-	books, err := queries.GetBooksByOwnerID(c, dbUser.ID)
-
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-  
-  c.JSON(http.StatusOK, books)
+	c.JSON(http.StatusOK, books)
 }
 
 func main() {

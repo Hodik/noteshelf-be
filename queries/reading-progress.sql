@@ -1,6 +1,6 @@
 -- name: UpdateReadingProgress :one
 UPDATE reading_progress 
-SET current_page=slqc.arg(current_page), percentage_complete=sqlc.arg(percentage_complete) 
+SET current_page=sqlc.arg(current_page), percentage_complete=sqlc.arg(percentage_complete) 
 WHERE book_id = sqlc.arg(book_id) AND user_id = sqlc.arg(user_id)
 RETURNING *;
 

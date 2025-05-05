@@ -31,3 +31,5 @@ sql:
             go_type: "string"
           - db_type: "pg_catalog.varchar"
             go_type: "string"
+          - db_type: "pg_catalog.numeric"
+            go_type: "float64"

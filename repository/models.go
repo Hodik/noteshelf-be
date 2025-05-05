@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Book struct {
@@ -21,11 +20,11 @@ type Book struct {
 }
 
 type ReadingProgress struct {
-	UserID             string         `json:"user_id"`
-	BookID             uuid.UUID      `json:"book_id"`
-	CurrentPage        int32          `json:"current_page"`
-	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
-	LastReadAt         time.Time      `json:"last_read_at"`
+	UserID             string    `json:"user_id"`
+	BookID             uuid.UUID `json:"book_id"`
+	CurrentPage        int32     `json:"current_page"`
+	PercentageComplete float64   `json:"percentage_complete"`
+	LastReadAt         time.Time `json:"last_read_at"`
 }
 
 type User struct {

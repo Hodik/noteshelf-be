@@ -1,5 +1,6 @@
 -- name: GetBooksByOwnerID :many
-SELECT * FROM books where owner_id = sqlc.arg(owner_id);
+SELECT sqlc.embed(books), sqlc.embed(reading_progress) 
+FROM books WHERE owner_id = sqlc.arg(owner_id) JOIN reading_progress on reading_progress.book_id = books.id;
 
 -- name: GetBookByID :one
 SELECT * FROM books WHERE id = sqlc.arg(id);

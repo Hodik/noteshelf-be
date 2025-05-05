@@ -7,22 +7,21 @@ package repository
 
 import (
 	"context"
-	"time"
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, username, first_name, last_name, added_at, updated_at)
+INSERT INTO users (id, username, first_name, last_name, email, phone)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, email, username, first_name, last_name, added_at, updated_at
+RETURNING id, email, username, first_name, last_name, added_at, updated_at, phone
 `
 
 type CreateUserParams struct {
-	ID        string    `json:"id"`
-	Username  *string   `json:"username"`
-	FirstName *string   `json:"first_name"`
-	LastName  *string   `json:"last_name"`
-	AddedAt   time.Time `json:"added_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string  `json:"id"`
+	Username  *string `json:"username"`
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
+	Email     string  `json:"email"`
+	Phone     *string `json:"phone"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -31,8 +30,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Username,
 		arg.FirstName,
 		arg.LastName,
-		arg.AddedAt,
-		arg.UpdatedAt,
+		arg.Email,
+		arg.Phone,
 	)
 	var i User
 	err := row.Scan(
@@ -43,12 +42,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.LastName,
 		&i.AddedAt,
 		&i.UpdatedAt,
+		&i.Phone,
 	)
 	return i, err
 }
 
 const getAllUsers = `-- name: GetAllUsers :many
-SELECT id, email, username, first_name, last_name, added_at, updated_at FROM users
+SELECT id, email, username, first_name, last_name, added_at, updated_at, phone FROM users
 `
 
 func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
@@ -68,6 +68,7 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 			&i.LastName,
 			&i.AddedAt,
 			&i.UpdatedAt,
+			&i.Phone,
 		); err != nil {
 			return nil, err
 		}
@@ -80,7 +81,7 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, email, username, first_name, last_name, added_at, updated_at FROM users
+SELECT id, email, username, first_name, last_name, added_at, updated_at, phone FROM users
 WHERE id = $1
 `
 
@@ -95,6 +96,7 @@ func (q *Queries) GetUserById(ctx context.Context, id string) (User, error) {
 		&i.LastName,
 		&i.AddedAt,
 		&i.UpdatedAt,
+		&i.Phone,
 	)
 	return i, err
 }

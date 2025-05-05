@@ -6,7 +6,27 @@ package repository
 
 import (
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type Book struct {
+	ID         uuid.UUID `json:"id"`
+	Title      string    `json:"title"`
+	Author     *string   `json:"author"`
+	OwnerID    string    `json:"owner_id"`
+	S3Key      string    `json:"s3_key"`
+	TotalPages int32     `json:"total_pages"`
+}
+
+type ReadingProgress struct {
+	UserID             string         `json:"user_id"`
+	BookID             uuid.UUID      `json:"book_id"`
+	CurrentPage        int32          `json:"current_page"`
+	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
+	LastReadAt         time.Time      `json:"last_read_at"`
+}
 
 type User struct {
 	ID        string    `json:"id"`
@@ -16,4 +36,5 @@ type User struct {
 	LastName  *string   `json:"last_name"`
 	AddedAt   time.Time `json:"added_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Phone     *string   `json:"phone"`
 }

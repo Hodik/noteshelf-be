@@ -23,6 +23,7 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -31,6 +32,10 @@ var queries *repository.Queries
 var s3Client *s3.Client
 var bucketName string
 var presignedUrlExpirySeconds int64
+
+const (
+	UniqueViolationCode = "23505" // PostgreSQL error code for unique constraint violation
+)
 
 func initS3Client(ctx context.Context) (*s3.Client, error) {
 	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
@@ -50,12 +55,25 @@ func initS3Client(ctx context.Context) (*s3.Client, error) {
 	return s3.NewFromConfig(cfg), nil
 }
 
-func generatePresignedUploadURL(ctx context.Context, s3Client *s3.Client, bucketName, objectKey string, expirySeconds int64) (string, error) {
+func KeyExists(ctx context.Context, client *s3.Client, bucket, key string) bool {
+	_, err := client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+
+	if err == nil {
+		return true
+	}
+
+	return false
+}
+
+func generatePresignedUploadURL(ctx context.Context, s3Client *s3.Client, bucketName, key string, expirySeconds int64) (string, error) {
 	presignClient := s3.NewPresignClient(s3Client)
 
 	request, err := presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
+		Key:    aws.String(key),
 	}, func(opts *s3.PresignOptions) {
 		opts.Expires = time.Duration(expirySeconds) * time.Second
 	})
@@ -253,10 +271,11 @@ type ConfirmBookUploadRequest struct {
 	TotalPages int    `json:"total_pages"`
 }
 
-func confirmBookUpload(c *gin.Context) {
+func confirmBookUploadHandler(c *gin.Context) {
 	dbUser, err := getDBUserFromRequest(c)
 	if err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
+		return
 	}
 
 	var req ConfirmBookUploadRequest
@@ -265,10 +284,39 @@ func confirmBookUpload(c *gin.Context) {
 		return
 	}
 
-	book, err := queries.CreateBook(c, repository.CreateBookParams{ID: uuid.New(), OwnerID: dbUser.ID, S3Key: req.S3Key, TotalPages: int32(req.TotalPages)})
+	if !KeyExists(c, s3Client, bucketName, req.S3Key) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "s3 key doesn't exists"})
+		return
+	}
+
+	tx, err := dbPool.Begin(c)
+	defer tx.Rollback(c)
+
+	localQueries := repository.New(tx)
 
 	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	book, err := localQueries.CreateBook(c, repository.CreateBookParams{ID: uuid.New(), OwnerID: dbUser.ID, S3Key: req.S3Key, TotalPages: int32(req.TotalPages), Title: req.Title})
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == UniqueViolationCode {
+			c.JSON(http.StatusConflict, gin.H{"error": "Book already exists"})
+			return
+		}
+
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if _, err := localQueries.CreateReadingProgress(c, repository.CreateReadingProgressParams{BookID: book.ID, UserID: dbUser.ID}); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "error while creating reading progress for a book" + err.Error()})
+		return
+	}
+	if err := tx.Commit(c); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
@@ -279,7 +327,7 @@ type UpdateReadingProgressRequest struct {
 	CurrentPage int `json:"current_page" binding:"required"`
 }
 
-func updateReadingProgress(c *gin.Context) {
+func updateReadingProgressHandler(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := getDBUserFromRequest(c)
 	if err != nil {
@@ -336,7 +384,7 @@ func getLibraryHandler(c *gin.Context) {
 func main() {
 	clerk.SetKey(os.Getenv("CLERK_SECRET_KEY"))
 	if err := setupDB(); err != nil {
-		log.Fatalf("failed to setup db connections", err)
+		log.Fatalln("failed to setup db connections", err.Error())
 	}
 	var err error
 	s3Client, err = initS3Client(context.Background())
@@ -376,6 +424,9 @@ func main() {
 
 	router.GET("/me", meHandler)
 	router.POST("/upload-book", generateUploadUrlHandler)
+	router.POST("/books", confirmBookUploadHandler)
+	router.GET("/books", getLibraryHandler)
+	router.PATCH("/books/:book_id/reading-progress", updateReadingProgressHandler)
 
 	srv := &http.Server{
 		Addr:         ":8080",

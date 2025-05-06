@@ -9,16 +9,19 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createBook = `-- name: CreateBook :one
 INSERT INTO books (id, title, author, owner_id, s3_key, total_pages)
-VALUES ($1, ssqlc.arg(title),qlc.arg(author), $2, $3, $4)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, title, author, owner_id, s3_key, total_pages
 `
 
 type CreateBookParams struct {
 	ID         uuid.UUID `json:"id"`
+	Title      string    `json:"title"`
+	Author     *string   `json:"author"`
 	OwnerID    string    `json:"owner_id"`
 	S3Key      string    `json:"s3_key"`
 	TotalPages int32     `json:"total_pages"`
@@ -27,6 +30,8 @@ type CreateBookParams struct {
 func (q *Queries) CreateBook(ctx context.Context, arg CreateBookParams) (Book, error) {
 	row := q.db.QueryRow(ctx, createBook,
 		arg.ID,
+		arg.Title,
+		arg.Author,
 		arg.OwnerID,
 		arg.S3Key,
 		arg.TotalPages,
@@ -71,25 +76,36 @@ func (q *Queries) GetBookByID(ctx context.Context, id uuid.UUID) (Book, error) {
 }
 
 const getBooksByOwnerID = `-- name: GetBooksByOwnerID :many
-SELECT id, title, author, owner_id, s3_key, total_pages FROM books where owner_id = $1
+SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, reading_progress.current_page, reading_progress.percentage_complete 
+FROM books 
+LEFT JOIN reading_progress on reading_progress.book_id = books.id
+WHERE owner_id = $1
 `
 
-func (q *Queries) GetBooksByOwnerID(ctx context.Context, ownerID string) ([]Book, error) {
+type GetBooksByOwnerIDRow struct {
+	Book               Book           `json:"book"`
+	CurrentPage        *int32         `json:"current_page"`
+	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
+}
+
+func (q *Queries) GetBooksByOwnerID(ctx context.Context, ownerID string) ([]GetBooksByOwnerIDRow, error) {
 	rows, err := q.db.Query(ctx, getBooksByOwnerID, ownerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Book
+	var items []GetBooksByOwnerIDRow
 	for rows.Next() {
-		var i Book
+		var i GetBooksByOwnerIDRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Title,
-			&i.Author,
-			&i.OwnerID,
-			&i.S3Key,
-			&i.TotalPages,
+			&i.Book.ID,
+			&i.Book.Title,
+			&i.Book.Author,
+			&i.Book.OwnerID,
+			&i.Book.S3Key,
+			&i.Book.TotalPages,
+			&i.CurrentPage,
+			&i.PercentageComplete,
 		); err != nil {
 			return nil, err
 		}

@@ -1,0 +1,31 @@
+# Dockerfile.dev
+FROM golang:1.23-alpine AS development
+
+WORKDIR /app
+
+# Install necessary tools:
+# - curl: for downloading air and migrate
+# - git: air installation script might use it
+# - bash: air installation script might use it
+# - gcc, libc-dev: for CGO if any dependency needs it
+# - postgresql-client: for running migrations if your migrate tool needs it
+# - ca-certificates: for HTTPS connections
+RUN apk add --no-cache curl git bash gcc libc-dev postgresql-client ca-certificates
+
+# Install air for live reloading
+# Installs air to /usr/local/bin/air
+RUN curl -sSfL https://raw.githubusercontent.com/cosmtrek/air/master/install.sh | sh -s -- -b /usr/local/bin
+
+# Install migrate tool (same version as your production Dockerfile)
+RUN curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz && \
+    mv migrate /usr/local/bin/migrate && \
+    chmod +x /usr/local/bin/migrate
+
+# Copy go module files
+COPY go.mod go.sum ./
+# Download dependencies. This layer will be cached if go.mod/go.sum don't change.
+RUN go mod download
+COPY migrations ./migrations
+
+EXPOSE 8080
+CMD ["air"]

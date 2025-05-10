@@ -1,0 +1,18 @@
+# .air.toml
+root = "." # Project root
+tmp_dir = "tmp" # Temporary directory for builds
+
+[build]
+  # Command to build your Go application. Air will place the binary in tmp_dir.
+  cmd = "go build -o ./tmp/app ."
+  # The binary/command air should run.
+  # We point this to your docker-entrypoint.sh script.
+  bin = "./docker-entrypoint.sh"
+
+[log]
+  # Show time in logs
+  time = true
+
+[misc]
+  # Delete tmp directory on exit
+  clean_on_exit = true

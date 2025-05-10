@@ -16,7 +16,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     restart: always
     depends_on:
       - postgres
@@ -27,6 +27,8 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    volumes:
+      - .:/app
 
 volumes:
   postgres_data:

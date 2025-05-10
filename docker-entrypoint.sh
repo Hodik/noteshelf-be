@@ -15,4 +15,4 @@ migrate -path ./migrations -database "${POSTGRESQL_URL}?sslmode=disable" up
 
 # Start the application
 echo "Starting application..."
-exec ./app
+exec ./tmp/app "$@"

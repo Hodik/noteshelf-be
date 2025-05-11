@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/rsa"
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -75,4 +78,65 @@ func GeneratePresignedUploadURL(ctx context.Context, s3Client *s3.Client, bucket
 	}
 
 	return request.URL, nil
+}
+
+func DownloadFileToTmp(ctx context.Context, s3Client *s3.Client, bucketName, key, baseTmpDir string) (string, error) {
+	localPath := filepath.Join(baseTmpDir, key)
+
+	localDir := filepath.Dir(localPath)
+
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create local directory '%s': %w", localDir, err)
+	}
+
+	localFile, err := os.Create(localPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create local file '%s': %w", localPath, err)
+	}
+	defer localFile.Close()
+
+	getObjectInput := &s3.GetObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(key),
+	}
+
+	resp, err := s3Client.GetObject(ctx, getObjectInput)
+	if err != nil {
+		os.Remove(localPath)
+		return "", fmt.Errorf("failed to get object '%s' from bucket '%s': %w", key, bucketName, err)
+	}
+
+	defer resp.Body.Close()
+
+	_, err = io.Copy(localFile, resp.Body)
+	if err != nil {
+
+		os.Remove(localPath)
+		return "", fmt.Errorf("failed to copy S3 object body to local file '%s': %w", localPath, err)
+	}
+
+	log.Printf("Successfully downloaded s3://%s/%s to %s", bucketName, key, localPath)
+	return localPath, nil
+}
+
+func UploadFileToS3(ctx context.Context, s3Client *s3.Client, localFilePath, bucketName, key string) error {
+	localFile, err := os.Open(localFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to open local file '%s': %w", localFilePath, err)
+	}
+	defer localFile.Close()
+
+	putObjectInput := &s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(key),
+		Body:   localFile,
+	}
+
+	_, err = s3Client.PutObject(ctx, putObjectInput)
+	if err != nil {
+		return fmt.Errorf("failed to upload file '%s' to s3://%s/%s: %w", localFilePath, bucketName, key, err)
+	}
+
+	log.Printf("Successfully uploaded '%s' to s3://%s/%s", localFilePath, bucketName, key)
+	return nil
 }

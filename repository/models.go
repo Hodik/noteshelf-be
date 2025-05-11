@@ -11,12 +11,13 @@ import (
 )
 
 type Book struct {
-	ID         uuid.UUID `json:"id"`
-	Title      string    `json:"title"`
-	Author     *string   `json:"author"`
-	OwnerID    string    `json:"owner_id"`
-	S3Key      string    `json:"s3_key"`
-	TotalPages int32     `json:"total_pages"`
+	ID             uuid.UUID `json:"id"`
+	Title          string    `json:"title"`
+	Author         *string   `json:"author"`
+	OwnerID        string    `json:"owner_id"`
+	S3Key          string    `json:"s3_key"`
+	TotalPages     int32     `json:"total_pages"`
+	ThumbnailS3Key *string   `json:"thumbnail_s3_key"`
 }
 
 type ReadingProgress struct {

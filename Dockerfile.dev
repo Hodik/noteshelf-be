@@ -10,7 +10,7 @@ WORKDIR /app
 # - gcc, libc-dev: for CGO if any dependency needs it
 # - postgresql-client: for running migrations if your migrate tool needs it
 # - ca-certificates: for HTTPS connections
-RUN apk add --no-cache curl git bash gcc libc-dev postgresql-client ca-certificates
+RUN apk add --no-cache curl git bash gcc libc-dev postgresql-client ca-certificates poppler-utils libwebp-tools
 
 # Install air for live reloading
 # Installs air to /usr/local/bin/air

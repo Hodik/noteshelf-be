@@ -2,12 +2,14 @@ package main
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
 	"github.com/Hodik/noteshelf-be.git/auth"
 	"github.com/Hodik/noteshelf-be.git/repository"
 	"github.com/Hodik/noteshelf-be.git/setup"
+	"github.com/Hodik/noteshelf-be.git/thumbnailgenerator"
 	"github.com/Hodik/noteshelf-be.git/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -36,6 +38,10 @@ func generateUploadUrlHandler(c *gin.Context) {
 	var req UploadBookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !strings.HasSuffix(req.Name, ".pdf") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book format"})
 		return
 	}
 
@@ -105,6 +111,38 @@ func confirmBookUploadHandler(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
+
+	go func() {
+		thumbnailWebpKey := strings.Replace(book.S3Key, ".pdf", ".webp", -1)
+		log.Println("generating thumbnail for book: ", book.S3Key, ", thumbnailKey: ", thumbnailWebpKey)
+		localPath, err := utils.DownloadFileToTmp(c, cfg.S3Client, cfg.BucketName, book.S3Key, "/tmp")
+		if err != nil {
+			log.Println("error while downloading s3key to tmp: ", err.Error())
+			return
+		}
+
+		thumbnailPath, err := thumbnailgenerator.GeneratePdfThumbnail(localPath, "/tmp", dbUser.ID)
+		if err != nil {
+			log.Println("error while getting pdf thumbnail: ", err.Error())
+			return
+		}
+
+		webpPath := strings.Replace(thumbnailPath, ".jpg", ".webp", -1)
+		if err := thumbnailgenerator.ConvertToWebp(thumbnailPath, webpPath); err != nil {
+			log.Println("error while getting pdf thumbnail: ", err.Error())
+			return
+		}
+
+		if err := utils.UploadFileToS3(c, cfg.S3Client, webpPath, cfg.BucketName, thumbnailWebpKey); err != nil {
+			log.Println("error while uploading thumbnail to s3: ", err.Error())
+			return
+		}
+
+		if _, err := cfg.Queries.UpdateBook(c, repository.UpdateBookParams{ThumbnailS3Key: &thumbnailWebpKey, BookID: book.ID}); err != nil {
+			log.Println("error while updating DB book", err.Error())
+			return
+		}
+	}()
 
 	c.JSON(http.StatusOK, book)
 }

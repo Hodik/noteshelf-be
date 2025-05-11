@@ -15,3 +15,11 @@ RETURNING *;
 -- name: DeleteBook :exec
 DELETE FROM books where id=sqlc.arg(id);
 
+-- name: UpdateBook :one
+UPDATE books 
+SET 
+  title=COALESCE(sqlc.narg(title), title),
+  thumbnail_s3_key=COALESCE(sqlc.narg(thumbnail_s3_key), thumbnail_s3_key),
+  author=COALESCE(sqlc.narg(author), author)
+WHERE id=sqlc.arg(book_id)
+RETURNING *;

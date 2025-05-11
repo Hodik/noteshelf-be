@@ -53,7 +53,7 @@ func generateUploadUrlHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"presigned_url": url})
+  c.JSON(http.StatusOK, gin.H{"presigned_url": url, "s3_key": key})
 }
 
 type ConfirmBookUploadRequest struct {

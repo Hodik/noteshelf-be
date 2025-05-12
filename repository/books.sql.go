@@ -15,7 +15,7 @@ import (
 const createBook = `-- name: CreateBook :one
 INSERT INTO books (id, title, author, owner_id, s3_key, total_pages)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key
+RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key, added_at, updated_at
 `
 
 type CreateBookParams struct {
@@ -45,6 +45,8 @@ func (q *Queries) CreateBook(ctx context.Context, arg CreateBookParams) (Book, e
 		&i.S3Key,
 		&i.TotalPages,
 		&i.ThumbnailS3Key,
+		&i.AddedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -59,29 +61,43 @@ func (q *Queries) DeleteBook(ctx context.Context, id uuid.UUID) error {
 }
 
 const getBookByID = `-- name: GetBookByID :one
-SELECT id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key FROM books WHERE id = $1
+SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, reading_progress.current_page, reading_progress.percentage_complete 
+FROM books 
+LEFT JOIN reading_progress on reading_progress.book_id = books.id
+WHERE id = $1
 `
 
-func (q *Queries) GetBookByID(ctx context.Context, id uuid.UUID) (Book, error) {
+type GetBookByIDRow struct {
+	Book               Book           `json:"book"`
+	CurrentPage        *int32         `json:"current_page"`
+	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
+}
+
+func (q *Queries) GetBookByID(ctx context.Context, id uuid.UUID) (GetBookByIDRow, error) {
 	row := q.db.QueryRow(ctx, getBookByID, id)
-	var i Book
+	var i GetBookByIDRow
 	err := row.Scan(
-		&i.ID,
-		&i.Title,
-		&i.Author,
-		&i.OwnerID,
-		&i.S3Key,
-		&i.TotalPages,
-		&i.ThumbnailS3Key,
+		&i.Book.ID,
+		&i.Book.Title,
+		&i.Book.Author,
+		&i.Book.OwnerID,
+		&i.Book.S3Key,
+		&i.Book.TotalPages,
+		&i.Book.ThumbnailS3Key,
+		&i.Book.AddedAt,
+		&i.Book.UpdatedAt,
+		&i.CurrentPage,
+		&i.PercentageComplete,
 	)
 	return i, err
 }
 
 const getBooksByOwnerID = `-- name: GetBooksByOwnerID :many
-SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, reading_progress.current_page, reading_progress.percentage_complete 
+SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, reading_progress.current_page, reading_progress.percentage_complete 
 FROM books 
 LEFT JOIN reading_progress on reading_progress.book_id = books.id
 WHERE owner_id = $1
+ORDER BY added_at DESC
 `
 
 type GetBooksByOwnerIDRow struct {
@@ -107,6 +123,8 @@ func (q *Queries) GetBooksByOwnerID(ctx context.Context, ownerID string) ([]GetB
 			&i.Book.S3Key,
 			&i.Book.TotalPages,
 			&i.Book.ThumbnailS3Key,
+			&i.Book.AddedAt,
+			&i.Book.UpdatedAt,
 			&i.CurrentPage,
 			&i.PercentageComplete,
 		); err != nil {
@@ -125,15 +143,17 @@ UPDATE books
 SET 
   title=COALESCE($1, title),
   thumbnail_s3_key=COALESCE($2, thumbnail_s3_key),
-  author=COALESCE($3, author)
-WHERE id=$4
-RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key
+  author=COALESCE($3, author),
+  total_pages=COALESCE($4, total_pages)
+WHERE id=$5
+RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key, added_at, updated_at
 `
 
 type UpdateBookParams struct {
 	Title          *string   `json:"title"`
 	ThumbnailS3Key *string   `json:"thumbnail_s3_key"`
 	Author         *string   `json:"author"`
+	TotalPages     *int32    `json:"total_pages"`
 	BookID         uuid.UUID `json:"book_id"`
 }
 
@@ -142,6 +162,7 @@ func (q *Queries) UpdateBook(ctx context.Context, arg UpdateBookParams) (Book, e
 		arg.Title,
 		arg.ThumbnailS3Key,
 		arg.Author,
+		arg.TotalPages,
 		arg.BookID,
 	)
 	var i Book
@@ -153,6 +174,8 @@ func (q *Queries) UpdateBook(ctx context.Context, arg UpdateBookParams) (Book, e
 		&i.S3Key,
 		&i.TotalPages,
 		&i.ThumbnailS3Key,
+		&i.AddedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

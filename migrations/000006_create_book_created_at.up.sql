@@ -1,0 +1,22 @@
+ALTER TABLE books
+ADD added_at TIMESTAMP NOT NULL DEFAULT NOW(),
+ADD updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_set_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trigger_set_updated_at
+BEFORE UPDATE ON books
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+

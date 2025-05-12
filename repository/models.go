@@ -18,6 +18,8 @@ type Book struct {
 	S3Key          string    `json:"s3_key"`
 	TotalPages     int32     `json:"total_pages"`
 	ThumbnailS3Key *string   `json:"thumbnail_s3_key"`
+	AddedAt        time.Time `json:"added_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type ReadingProgress struct {

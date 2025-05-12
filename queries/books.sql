@@ -2,10 +2,15 @@
 SELECT sqlc.embed(books), reading_progress.current_page, reading_progress.percentage_complete 
 FROM books 
 LEFT JOIN reading_progress on reading_progress.book_id = books.id
-WHERE owner_id = sqlc.arg(owner_id);
+WHERE owner_id = sqlc.arg(owner_id)
+ORDER BY added_at DESC;
 
 -- name: GetBookByID :one
-SELECT * FROM books WHERE id = sqlc.arg(id);
+SELECT sqlc.embed(books), reading_progress.current_page, reading_progress.percentage_complete 
+FROM books 
+LEFT JOIN reading_progress on reading_progress.book_id = books.id
+WHERE id = sqlc.arg(id);
+
 
 -- name: CreateBook :one
 INSERT INTO books (id, title, author, owner_id, s3_key, total_pages)
@@ -20,6 +25,7 @@ UPDATE books
 SET 
   title=COALESCE(sqlc.narg(title), title),
   thumbnail_s3_key=COALESCE(sqlc.narg(thumbnail_s3_key), thumbnail_s3_key),
-  author=COALESCE(sqlc.narg(author), author)
+  author=COALESCE(sqlc.narg(author), author),
+  total_pages=COALESCE(sqlc.narg(total_pages), total_pages)
 WHERE id=sqlc.arg(book_id)
 RETURNING *;

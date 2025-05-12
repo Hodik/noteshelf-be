@@ -53,7 +53,7 @@ func generateUploadUrlHandler(c *gin.Context) {
 		return
 	}
 
-  c.JSON(http.StatusOK, gin.H{"presigned_url": url, "s3_key": key})
+	c.JSON(http.StatusOK, gin.H{"presigned_url": url, "s3_key": key})
 }
 
 type ConfirmBookUploadRequest struct {
@@ -161,7 +161,7 @@ func getBookHandler(c *gin.Context) {
 		return
 	}
 
-	book, err := cfg.Queries.GetBookByID(c, uuidBookID)
+	bookRow, err := cfg.Queries.GetBookByID(c, uuidBookID)
 	if err != nil {
 		if strings.Contains(err.Error(), "no rows") {
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -172,28 +172,31 @@ func getBookHandler(c *gin.Context) {
 		}
 	}
 
-	if book.OwnerID != dbUser.ID {
+	if bookRow.Book.OwnerID != dbUser.ID {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not an owner"})
 		return
 	}
-	readURL, err := utils.GeneratePresignedReadURL(cfg.CloudfrontUrl, book.S3Key, cfg.KeyPairID, int(cfg.PresignedUrlExpirySeconds), cfg.PrivateSignKey)
+	readURL, err := utils.GeneratePresignedReadURL(cfg.CloudfrontUrl, bookRow.Book.S3Key, cfg.KeyPairID, int(cfg.PresignedUrlExpirySeconds), cfg.PrivateSignKey)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"book": book, "read_url": readURL})
+	c.JSON(http.StatusOK, gin.H{"book": bookRow.Book, "current_page": bookRow.CurrentPage, "read_url": readURL})
 }
 
 type UpdateReadingProgressRequest struct {
-	CurrentPage int `json:"current_page" binding:"required"`
+	CurrentPage int  `json:"current_page" binding:"required"`
+	TotalPages  *int `json:"total_pages"`
 }
 
 func updateReadingProgressHandler(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
+		log.Println(err)
 		c.AbortWithStatus(http.StatusInternalServerError)
+		return
 	}
 
 	var req UpdateReadingProgressRequest
@@ -208,18 +211,41 @@ func updateReadingProgressHandler(c *gin.Context) {
 		return
 	}
 
-	book, err := cfg.Queries.GetBookByID(c, uuidBookID)
+	bookRow, err := cfg.Queries.GetBookByID(c, uuidBookID)
+	if err != nil {
+		if strings.Contains(err.Error(), "no rows") {
+			log.Println(err)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		} else {
+			log.Println(err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	if req.TotalPages != nil {
+		totalPages := int32(*req.TotalPages)
+		if bookRow.Book.TotalPages != totalPages {
+			if _, err := cfg.Queries.UpdateBook(c, repository.UpdateBookParams{TotalPages: &totalPages, BookID: bookRow.Book.ID}); err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			bookRow.Book.TotalPages = totalPages
+		}
+	}
 
 	var percentageComplete float64
-	if book.TotalPages < 1 {
+	if bookRow.Book.TotalPages < 1 {
 		percentageComplete = 0.0
 	} else {
-		percentageComplete = float64(req.CurrentPage) / float64(book.TotalPages) * 100
+		percentageComplete = float64(req.CurrentPage) / float64(bookRow.Book.TotalPages) * 100
 	}
 
 	readingProgress, err := cfg.Queries.UpdateReadingProgress(c, repository.UpdateReadingProgressParams{CurrentPage: int32(req.CurrentPage), PercentageComplete: percentageComplete, BookID: uuidBookID, UserID: dbUser.ID})
 
 	if err != nil {
+		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

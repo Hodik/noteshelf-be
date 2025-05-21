@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS wait_list_emails(
+  email VARCHAR(200) PRIMARY KEY
+);

@@ -268,3 +268,45 @@ func getLibraryHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, books)
 }
+
+func getSharedLibraryHandler(c *gin.Context) {
+	dbUser, err := auth.GetDBUserFromRequest(c)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+
+	bookRows, err := cfg.Queries.GetPublicSharedBooks(c, dbUser.ID)
+
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var books []repository.Book
+	for _, bookRow := range bookRows {
+		books = append(books, bookRow.Book)
+	}
+
+	c.JSON(http.StatusOK, books)
+}
+
+type WaitListEmailRequest struct {
+	Email string `json:"email" binding:"required"`
+}
+
+func registerWaitListEmail(c *gin.Context) {
+	var req WaitListEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := cfg.Queries.RegisterWaitListEmail(c, req.Email); err != nil {
+    if strings.Contains(err.Error(), "unique constraint") {
+      c.AbortWithStatus(http.StatusConflict)
+      return
+    }
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, req)
+}

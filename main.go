@@ -16,8 +16,9 @@ import (
 )
 
 var cfg setup.Config
+
 func main() {
-  cfg = setup.Setup(30)
+	cfg = setup.Setup(30)
 	defer func() {
 		if cfg.DBPool != nil {
 			log.Println("Closing database connection pool...")
@@ -27,13 +28,17 @@ func main() {
 
 	router := gin.Default()
 
-	router.Use(auth.AuthMiddleware(cfg.Queries))
-	router.GET("/me", meHandler)
-	router.POST("/upload-book", generateUploadUrlHandler)
-	router.POST("/books", confirmBookUploadHandler)
-	router.GET("/books", getLibraryHandler)
-	router.GET("/books/:book_id", getBookHandler)
-	router.PATCH("/books/:book_id/reading-progress", updateReadingProgressHandler)
+	router.POST("/wait-list", registerWaitListEmail)
+
+  authorized := router.Group("/")
+	authorized.Use(auth.AuthMiddleware(cfg.Queries))
+	authorized.GET("/me", meHandler)
+	authorized.POST("/upload-book", generateUploadUrlHandler)
+	authorized.POST("/books", confirmBookUploadHandler)
+	authorized.GET("/books", getLibraryHandler)
+	authorized.GET("/public-books", getSharedLibraryHandler)
+	authorized.GET("/books/:book_id", getBookHandler)
+	authorized.PATCH("/books/:book_id/reading-progress", updateReadingProgressHandler)
 
 	srv := &http.Server{
 		Addr:         ":8080",

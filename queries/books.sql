@@ -5,6 +5,13 @@ LEFT JOIN reading_progress on reading_progress.book_id = books.id
 WHERE owner_id = sqlc.arg(owner_id)
 ORDER BY added_at DESC;
 
+-- name: GetPublicSharedBooks :many
+SELECT sqlc.embed(books)
+FROM book_viewers 
+INNER JOIN books ON book.id = book_viewers
+WHERE book_viewers.user_id = sqlc.arg(user_id)
+ORDER BY added_at DESC;
+
 -- name: GetBookByID :one
 SELECT sqlc.embed(books), reading_progress.current_page, reading_progress.percentage_complete 
 FROM books 

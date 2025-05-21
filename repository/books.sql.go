@@ -15,7 +15,7 @@ import (
 const createBook = `-- name: CreateBook :one
 INSERT INTO books (id, title, author, owner_id, s3_key, total_pages)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key, added_at, updated_at
+RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key, added_at, updated_at, is_public
 `
 
 type CreateBookParams struct {
@@ -47,6 +47,7 @@ func (q *Queries) CreateBook(ctx context.Context, arg CreateBookParams) (Book, e
 		&i.ThumbnailS3Key,
 		&i.AddedAt,
 		&i.UpdatedAt,
+		&i.IsPublic,
 	)
 	return i, err
 }
@@ -61,7 +62,7 @@ func (q *Queries) DeleteBook(ctx context.Context, id uuid.UUID) error {
 }
 
 const getBookByID = `-- name: GetBookByID :one
-SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, reading_progress.current_page, reading_progress.percentage_complete 
+SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, books.is_public, reading_progress.current_page, reading_progress.percentage_complete 
 FROM books 
 LEFT JOIN reading_progress on reading_progress.book_id = books.id
 WHERE id = $1
@@ -86,6 +87,7 @@ func (q *Queries) GetBookByID(ctx context.Context, id uuid.UUID) (GetBookByIDRow
 		&i.Book.ThumbnailS3Key,
 		&i.Book.AddedAt,
 		&i.Book.UpdatedAt,
+		&i.Book.IsPublic,
 		&i.CurrentPage,
 		&i.PercentageComplete,
 	)
@@ -93,7 +95,7 @@ func (q *Queries) GetBookByID(ctx context.Context, id uuid.UUID) (GetBookByIDRow
 }
 
 const getBooksByOwnerID = `-- name: GetBooksByOwnerID :many
-SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, reading_progress.current_page, reading_progress.percentage_complete 
+SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, books.is_public, reading_progress.current_page, reading_progress.percentage_complete 
 FROM books 
 LEFT JOIN reading_progress on reading_progress.book_id = books.id
 WHERE owner_id = $1
@@ -125,8 +127,52 @@ func (q *Queries) GetBooksByOwnerID(ctx context.Context, ownerID string) ([]GetB
 			&i.Book.ThumbnailS3Key,
 			&i.Book.AddedAt,
 			&i.Book.UpdatedAt,
+			&i.Book.IsPublic,
 			&i.CurrentPage,
 			&i.PercentageComplete,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPublicSharedBooks = `-- name: GetPublicSharedBooks :many
+SELECT books.id, books.title, books.author, books.owner_id, books.s3_key, books.total_pages, books.thumbnail_s3_key, books.added_at, books.updated_at, books.is_public
+FROM book_viewers 
+INNER JOIN books ON book.id = book_viewers
+WHERE book_viewers.user_id = $1
+ORDER BY added_at DESC
+`
+
+type GetPublicSharedBooksRow struct {
+	Book Book `json:"book"`
+}
+
+func (q *Queries) GetPublicSharedBooks(ctx context.Context, userID string) ([]GetPublicSharedBooksRow, error) {
+	rows, err := q.db.Query(ctx, getPublicSharedBooks, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPublicSharedBooksRow
+	for rows.Next() {
+		var i GetPublicSharedBooksRow
+		if err := rows.Scan(
+			&i.Book.ID,
+			&i.Book.Title,
+			&i.Book.Author,
+			&i.Book.OwnerID,
+			&i.Book.S3Key,
+			&i.Book.TotalPages,
+			&i.Book.ThumbnailS3Key,
+			&i.Book.AddedAt,
+			&i.Book.UpdatedAt,
+			&i.Book.IsPublic,
 		); err != nil {
 			return nil, err
 		}
@@ -146,7 +192,7 @@ SET
   author=COALESCE($3, author),
   total_pages=COALESCE($4, total_pages)
 WHERE id=$5
-RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key, added_at, updated_at
+RETURNING id, title, author, owner_id, s3_key, total_pages, thumbnail_s3_key, added_at, updated_at, is_public
 `
 
 type UpdateBookParams struct {
@@ -176,6 +222,7 @@ func (q *Queries) UpdateBook(ctx context.Context, arg UpdateBookParams) (Book, e
 		&i.ThumbnailS3Key,
 		&i.AddedAt,
 		&i.UpdatedAt,
+		&i.IsPublic,
 	)
 	return i, err
 }

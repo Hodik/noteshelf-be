@@ -20,6 +20,12 @@ type Book struct {
 	ThumbnailS3Key *string   `json:"thumbnail_s3_key"`
 	AddedAt        time.Time `json:"added_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	IsPublic       bool      `json:"is_public"`
+}
+
+type BookViewer struct {
+	BookID uuid.UUID `json:"book_id"`
+	UserID string    `json:"user_id"`
 }
 
 type ReadingProgress struct {
@@ -39,4 +45,8 @@ type User struct {
 	AddedAt   time.Time `json:"added_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Phone     *string   `json:"phone"`
+}
+
+type WaitListEmail struct {
+	Email string `json:"email"`
 }

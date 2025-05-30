@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -117,34 +117,74 @@ func confirmBookUploadHandler(c *gin.Context) {
 
 	go func() {
 		thumbnailWebpKey := strings.Replace(book.S3Key, ".pdf", ".webp", -1)
-		log.Println("generating thumbnail for book: ", book.S3Key, ", thumbnailKey: ", thumbnailWebpKey)
+
+		slog.Info("Starting thumbnail generation",
+			"book_id", book.ID,
+			"user_id", dbUser.ID,
+			"s3_key", book.S3Key,
+			"thumbnail_key", thumbnailWebpKey,
+		)
+
 		localPath, err := utils.DownloadFileToTmp(c, cfg.S3Client, cfg.BucketName, book.S3Key, "/tmp")
 		if err != nil {
-			log.Println("error while downloading s3key to tmp: ", err.Error())
+			slog.Error("Failed to download PDF from S3",
+				"error", err.Error(),
+				"book_id", book.ID,
+				"user_id", dbUser.ID,
+				"s3_key", book.S3Key,
+			)
 			return
 		}
 
 		thumbnailPath, err := thumbnailgenerator.GeneratePdfThumbnail(localPath, "/tmp", dbUser.ID)
 		if err != nil {
-			log.Println("error while getting pdf thumbnail: ", err.Error())
+			slog.Error("Failed to generate PDF thumbnail",
+				"error", err.Error(),
+				"book_id", book.ID,
+				"user_id", dbUser.ID,
+				"local_path", localPath,
+			)
 			return
 		}
 
 		webpPath := strings.Replace(thumbnailPath, ".jpg", ".webp", -1)
 		if err := thumbnailgenerator.ConvertToWebp(thumbnailPath, webpPath); err != nil {
-			log.Println("error while getting pdf thumbnail: ", err.Error())
+			slog.Error("Failed to convert thumbnail to WebP",
+				"error", err.Error(),
+				"book_id", book.ID,
+				"user_id", dbUser.ID,
+				"jpeg_path", thumbnailPath,
+				"webp_path", webpPath,
+			)
 			return
 		}
 
 		if err := utils.UploadFileToS3(c, cfg.S3Client, webpPath, cfg.BucketName, thumbnailWebpKey); err != nil {
-			log.Println("error while uploading thumbnail to s3: ", err.Error())
+			slog.Error("Failed to upload thumbnail to S3",
+				"error", err.Error(),
+				"book_id", book.ID,
+				"user_id", dbUser.ID,
+				"thumbnail_key", thumbnailWebpKey,
+				"local_path", webpPath,
+			)
 			return
 		}
 
 		if _, err := cfg.Queries.UpdateBook(c, repository.UpdateBookParams{ThumbnailS3Key: &thumbnailWebpKey, BookID: book.ID}); err != nil {
-			log.Println("error while updating DB book", err.Error())
+			slog.Error("Failed to update book with thumbnail",
+				"error", err.Error(),
+				"book_id", book.ID,
+				"user_id", dbUser.ID,
+				"thumbnail_key", thumbnailWebpKey,
+			)
 			return
 		}
+
+		slog.Info("Thumbnail generation completed successfully",
+			"book_id", book.ID,
+			"user_id", dbUser.ID,
+			"thumbnail_key", thumbnailWebpKey,
+		)
 	}()
 
 	c.JSON(http.StatusOK, book)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,7 +18,27 @@ import (
 
 var cfg setup.Config
 
+func setupLogger() {
+	opts := &slog.HandlerOptions{
+		Level:     slog.LevelInfo,
+		AddSource: true, // Add file:line info
+	}
+
+	var handler slog.Handler
+	if gin.Mode() == gin.ReleaseMode {
+		// JSON format for production
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		// Human-readable for development
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	slog.SetDefault(slog.New(handler))
+}
+
 func main() {
+	setupLogger()
+
 	cfg = setup.Setup(30)
 	defer func() {
 		if cfg.DBPool != nil {
@@ -26,7 +47,13 @@ func main() {
 		}
 	}()
 
-	router := gin.Default()
+	router := gin.New()
+
+	router.Use(gin.Recovery())
+
+	router.Use(RequestLoggingMiddleware())
+	router.Use(RequestIDMiddleware())
+	router.Use(RequestBodyCaptureMiddleware())
 	router.Use(ErrorHandler())
 
 	router.POST("/wait-list", registerWaitListEmail)

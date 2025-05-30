@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -19,7 +20,8 @@ import (
 func meHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
 	}
 
 	c.JSON(http.StatusOK, dbUser)
@@ -32,16 +34,17 @@ type UploadBookRequest struct {
 func generateUploadUrlHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
 	}
 
 	var req UploadBookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(NewHttpError(err.Error(), "invalid request body", http.StatusBadRequest))
 		return
 	}
 	if !strings.HasSuffix(req.Name, ".pdf") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book format"})
+		c.Error(NewHttpError("invalid book format", "file must be a PDF", http.StatusBadRequest))
 		return
 	}
 
@@ -49,7 +52,7 @@ func generateUploadUrlHandler(c *gin.Context) {
 	url, err := utils.GeneratePresignedUploadURL(c, cfg.S3Client, cfg.BucketName, key, cfg.PresignedUrlExpirySeconds)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -66,18 +69,18 @@ type ConfirmBookUploadRequest struct {
 func confirmBookUploadHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
 		return
 	}
 
 	var req ConfirmBookUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(NewHttpError(err.Error(), "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	if !utils.KeyExists(c, cfg.S3Client, cfg.BucketName, req.S3Key) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "s3 key doesn't exists"})
+		c.Error(NewHttpError("s3 key doesn't exist", "uploaded file not found", http.StatusBadRequest))
 		return
 	}
 
@@ -87,7 +90,7 @@ func confirmBookUploadHandler(c *gin.Context) {
 	localQueries := repository.New(tx)
 
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(err)
 		return
 	}
 
@@ -95,20 +98,20 @@ func confirmBookUploadHandler(c *gin.Context) {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == setup.UniqueViolationCode {
-			c.JSON(http.StatusConflict, gin.H{"error": "Book already exists"})
+			c.Error(NewHttpError("Book already exists", "duplicate book entry", http.StatusConflict))
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
 	if _, err := localQueries.CreateReadingProgress(c, repository.CreateReadingProgressParams{BookID: book.ID, UserID: dbUser.ID}); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "error while creating reading progress for a book" + err.Error()})
+		c.Error(NewHttpError("error while creating reading progress for a book: "+err.Error(), "reading progress creation failed", http.StatusInternalServerError))
 		return
 	}
 	if err := tx.Commit(c); err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(err)
 		return
 	}
 
@@ -151,34 +154,29 @@ func getBookHandler(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
 		return
 	}
 
 	uuidBookID, err := uuid.Parse(bookID)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": bookID + " is not a valid uuid"})
+		c.Error(NewHttpError(bookID+" is not a valid uuid", "invalid book ID format", http.StatusBadRequest))
 		return
 	}
 
 	bookRow, err := cfg.Queries.GetBookByID(c, uuidBookID)
 	if err != nil {
-		if strings.Contains(err.Error(), "no rows") {
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+		c.Error(err)
+		return
 	}
 
 	if bookRow.Book.OwnerID != dbUser.ID {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not an owner"})
+		c.Error(NewHttpError("not an owner", "access denied", http.StatusForbidden))
 		return
 	}
 	readURL, err := utils.GeneratePresignedReadURL(cfg.CloudfrontUrl, bookRow.Book.S3Key, cfg.KeyPairID, int(cfg.PresignedUrlExpirySeconds), cfg.PrivateSignKey)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -194,41 +192,33 @@ func updateReadingProgressHandler(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		log.Println(err)
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
 		return
 	}
 
 	var req UpdateReadingProgressRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(NewHttpError(err.Error(), "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	uuidBookID, err := uuid.Parse(bookID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(NewHttpError(err.Error(), "invalid book ID format", http.StatusBadRequest))
 		return
 	}
 
 	bookRow, err := cfg.Queries.GetBookByID(c, uuidBookID)
 	if err != nil {
-		if strings.Contains(err.Error(), "no rows") {
-			log.Println(err)
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		} else {
-			log.Println(err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+		c.Error(err)
+		return
 	}
 
 	if req.TotalPages != nil {
 		totalPages := int32(*req.TotalPages)
 		if bookRow.Book.TotalPages != totalPages {
 			if _, err := cfg.Queries.UpdateBook(c, repository.UpdateBookParams{TotalPages: &totalPages, BookID: bookRow.Book.ID}); err != nil {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				c.Error(err)
 				return
 			}
 			bookRow.Book.TotalPages = totalPages
@@ -245,8 +235,7 @@ func updateReadingProgressHandler(c *gin.Context) {
 	readingProgress, err := cfg.Queries.UpdateReadingProgress(c, repository.UpdateReadingProgressParams{CurrentPage: int32(req.CurrentPage), PercentageComplete: percentageComplete, BookID: uuidBookID, UserID: dbUser.ID})
 
 	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -256,13 +245,14 @@ func updateReadingProgressHandler(c *gin.Context) {
 func getLibraryHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
 	}
 
 	books, err := cfg.Queries.GetBooksByOwnerID(c, dbUser.ID)
 
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -272,13 +262,14 @@ func getLibraryHandler(c *gin.Context) {
 func getSharedLibraryHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
 	}
 
 	bookRows, err := cfg.Queries.GetPublicSharedBooks(c, dbUser.ID)
 
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Error(err)
 		return
 	}
 
@@ -297,16 +288,112 @@ type WaitListEmailRequest struct {
 func registerWaitListEmail(c *gin.Context) {
 	var req WaitListEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(NewHttpError(err.Error(), "invalid request body", http.StatusBadRequest))
 		return
 	}
 	if _, err := cfg.Queries.RegisterWaitListEmail(c, req.Email); err != nil {
-    if strings.Contains(err.Error(), "unique constraint") {
-      c.AbortWithStatus(http.StatusConflict)
-      return
-    }
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if strings.Contains(err.Error(), "unique constraint") {
+			c.Error(NewHttpError("Email already registered", "duplicate email entry", http.StatusConflict))
+			return
+		}
+		c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, req)
+}
+
+type PDFReferenceRequest struct {
+	PageNumber int      `json:"page_number" binding:"required"`
+	XStart     float32  `json:"x_start" binding:"required"`
+	XEnd       *float32 `json:"x_end"`
+	YStart     float32  `json:"y_start" binding:"required"`
+	YEnd       *float32 `json:"y_end"`
+}
+
+func (req *PDFReferenceRequest) Validate(book *repository.Book) error {
+	if book.TotalPages != 0 && req.PageNumber > int(book.TotalPages) {
+		return NewHttpError(fmt.Sprintf("bigger than %d", book.TotalPages), "", http.StatusBadRequest)
+	}
+
+	return nil
+}
+
+type CreateNoteRequest struct {
+	Content string  `json:"content" binding:"required"`
+	Color   *string `json:"color"`
+
+	PDFReference *PDFReferenceRequest `json:"pdf_reference"`
+}
+
+func createNote(c *gin.Context) {
+	bookID := c.Param("book_id")
+	dbUser, err := auth.GetDBUserFromRequest(c)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
+	}
+
+	var req CreateNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(NewHttpError(err.Error(), "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	uuidBookID, err := uuid.Parse(bookID)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	bookRow, err := cfg.Queries.GetBookByID(c, uuidBookID)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	var pdfReferenceUUID *uuid.UUID
+	if req.PDFReference != nil {
+		if err := req.PDFReference.Validate(&bookRow.Book); err != nil {
+			c.Error(err)
+			return
+		}
+
+		pdfReference, err := cfg.Queries.CreatePDFReference(c, repository.CreatePDFReferenceParams{ID: uuid.New(), PageNumber: int16(req.PDFReference.PageNumber), XStart: req.PDFReference.XStart, XEnd: req.PDFReference.XEnd, YStart: req.PDFReference.YStart, YEnd: req.PDFReference.YEnd})
+		if err != nil {
+			c.Error(err)
+			return
+		}
+
+		pdfReferenceUUID = &pdfReference.ID
+	}
+
+	note, err := cfg.Queries.CreateNote(c, repository.CreateNoteParams{BookID: bookRow.Book.ID, UserID: dbUser.ID, ReferenceDataPdfID: pdfReferenceUUID, Content: &req.Content, Color: req.Color})
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, note)
+}
+
+func getNotes(c *gin.Context) {
+	bookID := c.Param("book_id")
+	dbUser, err := auth.GetDBUserFromRequest(c)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
+	}
+
+	uuidBookID, err := uuid.Parse(bookID)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "invalid book ID format", http.StatusBadRequest))
+		return
+	}
+	notes, err := cfg.Queries.GetNotesForBookUser(c, repository.GetNotesForBookUserParams{BookID: uuidBookID, UserID: dbUser.ID})
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, notes)
 }

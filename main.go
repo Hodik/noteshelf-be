@@ -27,10 +27,11 @@ func main() {
 	}()
 
 	router := gin.Default()
+	router.Use(ErrorHandler())
 
 	router.POST("/wait-list", registerWaitListEmail)
 
-  authorized := router.Group("/")
+	authorized := router.Group("/")
 	authorized.Use(auth.AuthMiddleware(cfg.Queries))
 	authorized.GET("/me", meHandler)
 	authorized.POST("/upload-book", generateUploadUrlHandler)
@@ -38,6 +39,8 @@ func main() {
 	authorized.GET("/books", getLibraryHandler)
 	authorized.GET("/public-books", getSharedLibraryHandler)
 	authorized.GET("/books/:book_id", getBookHandler)
+	authorized.GET("/books/:book_id/notes", getNotes)
+	authorized.POST("/books/:book_id/notes", createNote)
 	authorized.PATCH("/books/:book_id/reading-progress", updateReadingProgressHandler)
 
 	srv := &http.Server{

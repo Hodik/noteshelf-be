@@ -69,6 +69,8 @@ func main() {
 	authorized.GET("/books/:book_id/notes", getNotes)
 	authorized.POST("/books/:book_id/notes", createNote)
 	authorized.PATCH("/books/:book_id/reading-progress", updateReadingProgressHandler)
+	authorized.DELETE("/notes/:note_id", deleteNote)
+	authorized.PATCH("/notes/:note_id", updateNote)
 
 	srv := &http.Server{
 		Addr:         ":8080",

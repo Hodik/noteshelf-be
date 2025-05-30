@@ -437,3 +437,94 @@ func getNotes(c *gin.Context) {
 
 	c.JSON(http.StatusOK, notes)
 }
+
+func deleteNote(c *gin.Context) {
+	noteID := c.Param("note_id")
+	dbUser, err := auth.GetDBUserFromRequest(c)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
+	}
+
+	uuidNoteID, err := uuid.Parse(noteID)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "invalid note ID format", http.StatusBadRequest))
+		return
+	}
+
+	note, err := cfg.Queries.GetNoteByID(c, uuidNoteID)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	if note.UserID != dbUser.ID {
+		c.Error(NewHttpError("not an owner", "access denied", http.StatusForbidden))
+		return
+	}
+
+	if err := cfg.Queries.DeleteNote(c, uuidNoteID); err != nil {
+		c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Note deleted successfully"})
+}
+
+type UpdateNoteRequest struct {
+	Content *string `json:"content"`
+	Color   *string `json:"color"`
+}
+
+func updateNote(c *gin.Context) {
+	noteID := c.Param("note_id")
+	dbUser, err := auth.GetDBUserFromRequest(c)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "user authentication failed", http.StatusUnauthorized))
+		return
+	}
+
+	uuidNoteID, err := uuid.Parse(noteID)
+	if err != nil {
+		c.Error(NewHttpError(err.Error(), "invalid note ID format", http.StatusBadRequest))
+		return
+	}
+
+	note, err := cfg.Queries.GetNoteByID(c, uuidNoteID)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	if note.UserID != dbUser.ID {
+		c.Error(NewHttpError("not an owner", "access denied", http.StatusForbidden))
+		return
+	}
+
+	var req UpdateNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(NewHttpError(err.Error(), "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	var updateNoteParams repository.UpdateNoteParams
+	updateNoteParams.ID = uuidNoteID
+	updateNoteParams.Color = note.Color
+	updateNoteParams.Content = note.Content
+
+	if req.Content != nil {
+		updateNoteParams.Content = req.Content
+	}
+
+	if req.Color != nil {
+		updateNoteParams.Color = req.Color
+	}
+
+	note, err = cfg.Queries.UpdateNote(c, updateNoteParams)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, note)
+}

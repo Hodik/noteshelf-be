@@ -4,6 +4,9 @@ LEFT JOIN pdf_references on notes.reference_data_pdf = pdf_references.id
 WHERE book_id = sqlc.arg(book_id) and user_id = sqlc.arg(user_id)
 ORDER BY added_at DESC;
 
+-- name: GetNoteByID :one
+SELECT * FROM notes WHERE id = sqlc.arg(id);
+
 -- name: CreatePDFReference :one
 INSERT INTO pdf_references (id, page_number, x_start, x_end, y_start, y_end)
 VALUES (sqlc.arg(id), sqlc.arg(page_number), sqlc.arg(x_start), sqlc.narg(x_end), sqlc.arg(y_start), sqlc.narg(y_end))

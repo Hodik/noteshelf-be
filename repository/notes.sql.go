@@ -98,6 +98,27 @@ func (q *Queries) DeleteNote(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getNoteByID = `-- name: GetNoteByID :one
+SELECT id, book_id, user_id, content, color, added_at, updated_at, reference_type, reference_data_pdf FROM notes WHERE id = $1
+`
+
+func (q *Queries) GetNoteByID(ctx context.Context, id uuid.UUID) (Note, error) {
+	row := q.db.QueryRow(ctx, getNoteByID, id)
+	var i Note
+	err := row.Scan(
+		&i.ID,
+		&i.BookID,
+		&i.UserID,
+		&i.Content,
+		&i.Color,
+		&i.AddedAt,
+		&i.UpdatedAt,
+		&i.ReferenceType,
+		&i.ReferenceDataPdf,
+	)
+	return i, err
+}
+
 const getNotesForBookUser = `-- name: GetNotesForBookUser :one
 SELECT notes.id, book_id, user_id, content, color, added_at, updated_at, reference_type, reference_data_pdf, pdf_references.id, page_number, x_start, x_end, y_start, y_end FROM notes 
 LEFT JOIN pdf_references on notes.reference_data_pdf = pdf_references.id

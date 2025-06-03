@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hodik/noteshelf-be.git/auth"
 	docs "github.com/Hodik/noteshelf-be.git/docs"
+	"github.com/Hodik/noteshelf-be.git/observability"
 	"github.com/Hodik/noteshelf-be.git/setup"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -72,10 +73,25 @@ func main() {
 		}
 	}()
 
+	// Initialize OpenTelemetry
+	otelConfig := observability.DefaultConfig()
+	otelShutdown, err := observability.Initialize(otelConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize OpenTelemetry: %v", err)
+	}
+	defer func() {
+		log.Println("Shutting down OpenTelemetry...")
+		otelShutdown()
+	}()
+
 	router := gin.New()
 
 	// Add recovery middleware (equivalent to gin.Default())
 	router.Use(gin.Recovery())
+
+	// OpenTelemetry middleware - add this EARLY in the chain
+	router.Use(observability.OtelGinMiddleware("noteshelf-api"))
+	router.Use(observability.CustomObservabilityMiddleware())
 
 	// CORS configuration for frontend at localhost:3000
 	router.Use(cors.New(cors.Config{

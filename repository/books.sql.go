@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createBook = `-- name: CreateBook :one
@@ -69,9 +68,9 @@ WHERE id = $1
 `
 
 type GetBookByIDRow struct {
-	Book               Book           `json:"book"`
-	CurrentPage        *int32         `json:"current_page"`
-	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
+	Book               Book     `json:"book"`
+	CurrentPage        *int32   `json:"current_page"`
+	PercentageComplete *float64 `json:"percentage_complete"`
 }
 
 func (q *Queries) GetBookByID(ctx context.Context, id uuid.UUID) (GetBookByIDRow, error) {
@@ -103,9 +102,9 @@ ORDER BY added_at DESC
 `
 
 type GetBooksByOwnerIDRow struct {
-	Book               Book           `json:"book"`
-	CurrentPage        *int32         `json:"current_page"`
-	PercentageComplete pgtype.Numeric `json:"percentage_complete"`
+	Book               Book     `json:"book"`
+	CurrentPage        *int32   `json:"current_page"`
+	PercentageComplete *float64 `json:"percentage_complete"`
 }
 
 func (q *Queries) GetBooksByOwnerID(ctx context.Context, ownerID string) ([]GetBooksByOwnerIDRow, error) {

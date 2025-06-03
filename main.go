@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,13 +12,58 @@ import (
 	"log"
 
 	"github.com/Hodik/noteshelf-be.git/auth"
+	docs "github.com/Hodik/noteshelf-be.git/docs"
 	"github.com/Hodik/noteshelf-be.git/setup"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+// @title           Noteshelf API
+// @version         1.0
+// @description     A digital bookshelf and note-taking API for managing books and reading progress.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.url    http://www.swagger.io/support
+// @contact.email  support@swagger.io
+
+// @license.name  Apache 2.0
+// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host      localhost:8080
+// @BasePath  /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 var cfg setup.Config
 
+func setupLogger() {
+	opts := &slog.HandlerOptions{
+		Level:     slog.LevelInfo,
+		AddSource: true, // Add file:line info
+	}
+
+	var handler slog.Handler
+	if gin.Mode() == gin.ReleaseMode {
+		// JSON format for production
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		// Human-readable for development
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	slog.SetDefault(slog.New(handler))
+}
+
 func main() {
+	setupLogger()
+
+	docs.SwaggerInfo.BasePath = "/"
 	cfg = setup.Setup(30)
 	defer func() {
 		if cfg.DBPool != nil {
@@ -26,11 +72,32 @@ func main() {
 		}
 	}()
 
-	router := gin.Default()
+	router := gin.New()
+
+	// Add recovery middleware (equivalent to gin.Default())
+	router.Use(gin.Recovery())
+
+	// CORS configuration for frontend at localhost:3000
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "X-Request-ID"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	router.Use(RequestLoggingMiddleware())
+	router.Use(RequestIDMiddleware())
+	router.Use(RequestBodyCaptureMiddleware())
+	router.Use(ErrorHandler())
 
 	router.POST("/wait-list", registerWaitListEmail)
 
-  authorized := router.Group("/")
+	// Swagger documentation route
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	authorized := router.Group("/")
 	authorized.Use(auth.AuthMiddleware(cfg.Queries))
 	authorized.GET("/me", meHandler)
 	authorized.POST("/upload-book", generateUploadUrlHandler)
@@ -38,7 +105,11 @@ func main() {
 	authorized.GET("/books", getLibraryHandler)
 	authorized.GET("/public-books", getSharedLibraryHandler)
 	authorized.GET("/books/:book_id", getBookHandler)
+	authorized.GET("/books/:book_id/notes", getNotes)
+	authorized.POST("/books/:book_id/notes", createNote)
 	authorized.PATCH("/books/:book_id/reading-progress", updateReadingProgressHandler)
+	authorized.DELETE("/notes/:note_id", deleteNote)
+	authorized.PATCH("/notes/:note_id", updateNote)
 
 	srv := &http.Server{
 		Addr:         ":8080",

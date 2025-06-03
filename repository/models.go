@@ -28,6 +28,27 @@ type BookViewer struct {
 	UserID string    `json:"user_id"`
 }
 
+type Note struct {
+	ID               uuid.UUID  `json:"id"`
+	BookID           uuid.UUID  `json:"book_id"`
+	UserID           string     `json:"user_id"`
+	Content          *string    `json:"content"`
+	Color            *string    `json:"color"`
+	AddedAt          time.Time  `json:"added_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	ReferenceType    *string    `json:"reference_type"`
+	ReferenceDataPdf *uuid.UUID `json:"reference_data_pdf"`
+}
+
+type PdfReference struct {
+	ID         uuid.UUID `json:"id"`
+	PageNumber int16     `json:"page_number"`
+	XStart     float32   `json:"x_start"`
+	XEnd       *float32  `json:"x_end"`
+	YStart     float32   `json:"y_start"`
+	YEnd       *float32  `json:"y_end"`
+}
+
 type ReadingProgress struct {
 	UserID             string    `json:"user_id"`
 	BookID             uuid.UUID `json:"book_id"`

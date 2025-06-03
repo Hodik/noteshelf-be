@@ -1,0 +1,718 @@
+basePath: /
+definitions:
+  main.BookWithDetails:
+    properties:
+      book:
+        $ref: '#/definitions/repository.Book'
+      current_page:
+        example: 150
+        type: integer
+      read_url:
+        example: https://cloudfront.net/signed-url
+        type: string
+    type: object
+  main.ConfirmBookUploadRequest:
+    properties:
+      author:
+        example: Alan Donovan
+        type: string
+      s3_key:
+        example: user123/my-book.pdf
+        type: string
+      title:
+        example: The Go Programming Language
+        type: string
+      total_pages:
+        example: 380
+        type: integer
+    required:
+    - title
+    type: object
+  main.CreateNoteRequest:
+    properties:
+      color:
+        example: '#ffff00'
+        type: string
+      content:
+        example: This is an important point
+        type: string
+      pdf_reference:
+        $ref: '#/definitions/main.PDFReferenceRequest'
+    required:
+    - content
+    type: object
+  main.ErrorResponse:
+    properties:
+      description:
+        example: Invalid request
+        type: string
+      metadata:
+        example: Additional error context
+        type: string
+      request_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      statusCode:
+        example: 400
+        type: integer
+    type: object
+  main.NoteWithReference:
+    properties:
+      note:
+        $ref: '#/definitions/repository.Note'
+      pdf_reference:
+        $ref: '#/definitions/repository.PdfReference'
+    type: object
+  main.PDFReferenceRequest:
+    properties:
+      page_number:
+        example: 1
+        type: integer
+      x_end:
+        example: 200.5
+        type: number
+      x_start:
+        example: 100.5
+        type: number
+      y_end:
+        example: 400.5
+        type: number
+      y_start:
+        example: 300.5
+        type: number
+    required:
+    - page_number
+    - x_start
+    - y_start
+    type: object
+  main.SuccessResponse:
+    properties:
+      message:
+        example: Operation completed successfully
+        type: string
+      request_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+    type: object
+  main.UpdateNoteRequest:
+    properties:
+      color:
+        example: '#ff0000'
+        type: string
+      content:
+        example: Updated note content
+        type: string
+    type: object
+  main.UpdateReadingProgressRequest:
+    properties:
+      current_page:
+        example: 150
+        type: integer
+      total_pages:
+        example: 380
+        type: integer
+    required:
+    - current_page
+    type: object
+  main.UploadBookRequest:
+    properties:
+      name:
+        example: my-book.pdf
+        type: string
+    required:
+    - name
+    type: object
+  main.UploadUrlResponse:
+    properties:
+      presigned_url:
+        example: https://s3.amazonaws.com/bucket/presigned-url
+        type: string
+      s3_key:
+        example: user123/my-book.pdf
+        type: string
+    type: object
+  main.WaitListEmailRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+    required:
+    - email
+    type: object
+  repository.Book:
+    properties:
+      added_at:
+        type: string
+      author:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      owner_id:
+        type: string
+      s3_key:
+        type: string
+      thumbnail_s3_key:
+        type: string
+      title:
+        type: string
+      total_pages:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  repository.GetBooksByOwnerIDRow:
+    properties:
+      book:
+        $ref: '#/definitions/repository.Book'
+      current_page:
+        type: integer
+      percentage_complete:
+        type: number
+    type: object
+  repository.Note:
+    properties:
+      added_at:
+        type: string
+      book_id:
+        type: string
+      color:
+        type: string
+      content:
+        type: string
+      id:
+        type: string
+      reference_data_pdf:
+        type: string
+      reference_type:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  repository.PdfReference:
+    properties:
+      id:
+        type: string
+      page_number:
+        type: integer
+      x_end:
+        type: number
+      x_start:
+        type: number
+      y_end:
+        type: number
+      y_start:
+        type: number
+    type: object
+  repository.ReadingProgress:
+    properties:
+      book_id:
+        type: string
+      current_page:
+        type: integer
+      last_read_at:
+        type: string
+      percentage_complete:
+        type: number
+      user_id:
+        type: string
+    type: object
+  repository.User:
+    properties:
+      added_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: A digital bookshelf and note-taking API for managing books and reading
+    progress.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Noteshelf API
+  version: "1.0"
+paths:
+  /books:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all books owned by the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/repository.GetBooksByOwnerIDRow'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user's library
+      tags:
+      - Books
+    post:
+      consumes:
+      - application/json
+      description: Confirm that a book has been uploaded to S3 and create a database
+        record
+      parameters:
+      - description: Book confirmation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.ConfirmBookUploadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.Book'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm book upload and create book record
+      tags:
+      - Books
+  /books/{book_id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific book by ID with reading URL and current progress
+      parameters:
+      - description: Book ID
+        format: uuid
+        in: path
+        name: book_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.BookWithDetails'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get book details
+      tags:
+      - Books
+  /books/{book_id}/notes:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all notes for a specific book by the authenticated user
+      parameters:
+      - description: Book ID
+        format: uuid
+        in: path
+        name: book_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/main.NoteWithReference'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get notes for a book
+      tags:
+      - Notes
+    post:
+      consumes:
+      - application/json
+      description: Create a new note for a specific book, optionally with PDF coordinates
+      parameters:
+      - description: Book ID
+        format: uuid
+        in: path
+        name: book_id
+        required: true
+        type: string
+      - description: Note creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.CreateNoteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/main.NoteWithReference'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a note
+      tags:
+      - Notes
+  /books/{book_id}/reading-progress:
+    patch:
+      consumes:
+      - application/json
+      description: Update the current page and optionally total pages for a book
+      parameters:
+      - description: Book ID
+        format: uuid
+        in: path
+        name: book_id
+        required: true
+        type: string
+      - description: Reading progress update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateReadingProgressRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.ReadingProgress'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update reading progress
+      tags:
+      - Reading Progress
+  /me:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the authenticated user's profile information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.User'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user information
+      tags:
+      - Authentication
+  /notes/{note_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a specific note by ID
+      parameters:
+      - description: Note ID
+        format: uuid
+        in: path
+        name: note_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a note
+      tags:
+      - Notes
+    patch:
+      consumes:
+      - application/json
+      description: Update the content and/or color of a specific note
+      parameters:
+      - description: Note ID
+        format: uuid
+        in: path
+        name: note_id
+        required: true
+        type: string
+      - description: Note update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateNoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/repository.Note'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a note
+      tags:
+      - Notes
+  /public-books:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve publicly shared books from other users
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/repository.Book'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get shared public library
+      tags:
+      - Books
+  /upload-book:
+    post:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for uploading a PDF book to S3
+      parameters:
+      - description: Book upload request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.UploadBookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UploadUrlResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate presigned upload URL
+      tags:
+      - Books
+  /wait-list:
+    post:
+      consumes:
+      - application/json
+      description: Register an email address for the application waitlist
+      parameters:
+      - description: Email registration request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.WaitListEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.WaitListEmailRequest'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Register email for waitlist
+      tags:
+      - Waitlist
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

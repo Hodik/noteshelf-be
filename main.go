@@ -12,9 +12,33 @@ import (
 	"log"
 
 	"github.com/Hodik/noteshelf-be.git/auth"
+	docs "github.com/Hodik/noteshelf-be.git/docs"
 	"github.com/Hodik/noteshelf-be.git/setup"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+// @title           Noteshelf API
+// @version         1.0
+// @description     A digital bookshelf and note-taking API for managing books and reading progress.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.url    http://www.swagger.io/support
+// @contact.email  support@swagger.io
+
+// @license.name  Apache 2.0
+// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host      localhost:8080
+// @BasePath  /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 var cfg setup.Config
 
@@ -39,6 +63,7 @@ func setupLogger() {
 func main() {
 	setupLogger()
 
+	docs.SwaggerInfo.BasePath = "/"
 	cfg = setup.Setup(30)
 	defer func() {
 		if cfg.DBPool != nil {
@@ -49,7 +74,18 @@ func main() {
 
 	router := gin.New()
 
+	// Add recovery middleware (equivalent to gin.Default())
 	router.Use(gin.Recovery())
+
+	// CORS configuration for frontend at localhost:3000
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "X-Request-ID"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	router.Use(RequestLoggingMiddleware())
 	router.Use(RequestIDMiddleware())
@@ -57,6 +93,9 @@ func main() {
 	router.Use(ErrorHandler())
 
 	router.POST("/wait-list", registerWaitListEmail)
+
+	// Swagger documentation route
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	authorized := router.Group("/")
 	authorized.Use(auth.AuthMiddleware(cfg.Queries))

@@ -17,6 +17,30 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// ErrorResponse represents an API error response
+type ErrorResponse struct {
+	Description string `json:"description" example:"Invalid request"`
+	Metadata    string `json:"metadata" example:"Additional error context"`
+	StatusCode  int    `json:"statusCode" example:"400"`
+	RequestID   string `json:"request_id,omitempty" example:"123e4567-e89b-12d3-a456-426614174000"`
+}
+
+// SuccessResponse represents a generic success response
+type SuccessResponse struct {
+	Message   string `json:"message" example:"Operation completed successfully"`
+	RequestID string `json:"request_id,omitempty" example:"123e4567-e89b-12d3-a456-426614174000"`
+}
+
+// @Summary Get current user information
+// @Description Retrieve the authenticated user's profile information
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} repository.User
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /me [get]
 func meHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
@@ -27,10 +51,29 @@ func meHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, dbUser)
 }
 
+// UploadBookRequest represents the request body for generating upload URL
 type UploadBookRequest struct {
-	Name string `json:"name" binding:"required"`
+	Name string `json:"name" binding:"required" example:"my-book.pdf"`
 }
 
+// UploadUrlResponse represents the response for upload URL generation
+type UploadUrlResponse struct {
+	PresignedURL string `json:"presigned_url" example:"https://s3.amazonaws.com/bucket/presigned-url"`
+	S3Key        string `json:"s3_key" example:"user123/my-book.pdf"`
+}
+
+// @Summary Generate presigned upload URL
+// @Description Generate a presigned URL for uploading a PDF book to S3
+// @Tags Books
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body UploadBookRequest true "Book upload request"
+// @Success 200 {object} UploadUrlResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /upload-book [post]
 func generateUploadUrlHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
@@ -59,13 +102,27 @@ func generateUploadUrlHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"presigned_url": url, "s3_key": key})
 }
 
+// ConfirmBookUploadRequest represents the request body for confirming book upload
 type ConfirmBookUploadRequest struct {
-	Title      string `json:"title" binding:"required"`
-	Author     string `json:"author"`
-	S3Key      string `json:"s3_key"`
-	TotalPages int    `json:"total_pages"`
+	Title      string `json:"title" binding:"required" example:"The Go Programming Language"`
+	Author     string `json:"author" example:"Alan Donovan"`
+	S3Key      string `json:"s3_key" example:"user123/my-book.pdf"`
+	TotalPages int    `json:"total_pages" example:"380"`
 }
 
+// @Summary Confirm book upload and create book record
+// @Description Confirm that a book has been uploaded to S3 and create a database record
+// @Tags Books
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ConfirmBookUploadRequest true "Book confirmation request"
+// @Success 200 {object} repository.Book
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /books [post]
 func confirmBookUploadHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
@@ -190,6 +247,27 @@ func confirmBookUploadHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, book)
 }
 
+// BookWithDetails represents a book with reading URL and progress
+type BookWithDetails struct {
+	Book        repository.Book `json:"book"`
+	CurrentPage int32           `json:"current_page" example:"150"`
+	ReadURL     string          `json:"read_url" example:"https://cloudfront.net/signed-url"`
+}
+
+// @Summary Get book details
+// @Description Retrieve a specific book by ID with reading URL and current progress
+// @Tags Books
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param book_id path string true "Book ID" Format(uuid)
+// @Success 200 {object} BookWithDetails
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /books/{book_id} [get]
 func getBookHandler(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
@@ -223,11 +301,26 @@ func getBookHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"book": bookRow.Book, "current_page": bookRow.CurrentPage, "read_url": readURL})
 }
 
+// UpdateReadingProgressRequest represents the request body for updating reading progress
 type UpdateReadingProgressRequest struct {
-	CurrentPage int  `json:"current_page" binding:"required"`
-	TotalPages  *int `json:"total_pages"`
+	CurrentPage int  `json:"current_page" binding:"required" example:"150"`
+	TotalPages  *int `json:"total_pages,omitempty" example:"380"`
 }
 
+// @Summary Update reading progress
+// @Description Update the current page and optionally total pages for a book
+// @Tags Reading Progress
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param book_id path string true "Book ID" Format(uuid)
+// @Param request body UpdateReadingProgressRequest true "Reading progress update"
+// @Success 200 {object} repository.ReadingProgress
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /books/{book_id}/reading-progress [patch]
 func updateReadingProgressHandler(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
@@ -282,6 +375,16 @@ func updateReadingProgressHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, readingProgress)
 }
 
+// @Summary Get user's library
+// @Description Retrieve all books owned by the authenticated user
+// @Tags Books
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} repository.GetBooksByOwnerIDRow
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /books [get]
 func getLibraryHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
@@ -299,6 +402,16 @@ func getLibraryHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, books)
 }
 
+// @Summary Get shared public library
+// @Description Retrieve publicly shared books from other users
+// @Tags Books
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} repository.Book
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /public-books [get]
 func getSharedLibraryHandler(c *gin.Context) {
 	dbUser, err := auth.GetDBUserFromRequest(c)
 	if err != nil {
@@ -321,10 +434,22 @@ func getSharedLibraryHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, books)
 }
 
+// WaitListEmailRequest represents the request body for waitlist registration
 type WaitListEmailRequest struct {
-	Email string `json:"email" binding:"required"`
+	Email string `json:"email" binding:"required" example:"user@example.com"`
 }
 
+// @Summary Register email for waitlist
+// @Description Register an email address for the application waitlist
+// @Tags Waitlist
+// @Accept json
+// @Produce json
+// @Param request body WaitListEmailRequest true "Email registration request"
+// @Success 200 {object} WaitListEmailRequest
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /wait-list [post]
 func registerWaitListEmail(c *gin.Context) {
 	var req WaitListEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -342,12 +467,32 @@ func registerWaitListEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, req)
 }
 
+// NoteWithReference represents a note with its PDF reference
+type NoteWithReference struct {
+	Note         repository.Note          `json:"note"`
+	PDFReference *repository.PdfReference `json:"pdf_reference"`
+}
+
+func convertNotesToNotesWithReferences(notes []repository.GetNotesForBookUserRow) []NoteWithReference {
+	var notesWithReferences []NoteWithReference
+	for _, noteRow := range notes {
+		noteWithReference := NoteWithReference{Note: noteRow.Note}
+		if noteRow.Note.ReferenceType != nil && *noteRow.Note.ReferenceType == "pdf" && noteRow.PageNumber != nil {
+			noteWithReference.PDFReference = &repository.PdfReference{ID: *noteRow.ID, PageNumber: *noteRow.PageNumber, XStart: *noteRow.XStart, XEnd: noteRow.XEnd, YStart: *noteRow.YStart, YEnd: noteRow.YEnd}
+		}
+		notesWithReferences = append(notesWithReferences, noteWithReference)
+	}
+
+	return notesWithReferences
+}
+
+// PDFReferenceRequest represents PDF coordinate reference for a note
 type PDFReferenceRequest struct {
-	PageNumber int      `json:"page_number" binding:"required"`
-	XStart     float32  `json:"x_start" binding:"required"`
-	XEnd       *float32 `json:"x_end"`
-	YStart     float32  `json:"y_start" binding:"required"`
-	YEnd       *float32 `json:"y_end"`
+	PageNumber int      `json:"page_number" binding:"required" example:"1"`
+	XStart     float32  `json:"x_start" binding:"required" example:"100.5"`
+	XEnd       *float32 `json:"x_end,omitempty" example:"200.5"`
+	YStart     float32  `json:"y_start" binding:"required" example:"300.5"`
+	YEnd       *float32 `json:"y_end,omitempty" example:"400.5"`
 }
 
 func (req *PDFReferenceRequest) Validate(book *repository.Book) error {
@@ -358,13 +503,27 @@ func (req *PDFReferenceRequest) Validate(book *repository.Book) error {
 	return nil
 }
 
+// CreateNoteRequest represents the request body for creating a note
 type CreateNoteRequest struct {
-	Content string  `json:"content" binding:"required"`
-	Color   *string `json:"color"`
-
-	PDFReference *PDFReferenceRequest `json:"pdf_reference"`
+	Content      string               `json:"content" binding:"required" example:"This is an important point"`
+	Color        *string              `json:"color,omitempty" example:"#ffff00"`
+	PDFReference *PDFReferenceRequest `json:"pdf_reference,omitempty"`
 }
 
+// @Summary Create a note
+// @Description Create a new note for a specific book, optionally with PDF coordinates
+// @Tags Notes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param book_id path string true "Book ID" Format(uuid)
+// @Param request body CreateNoteRequest true "Note creation request"
+// @Success 201 {object} NoteWithReference
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /books/{book_id}/notes [post]
 func createNote(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
@@ -392,6 +551,7 @@ func createNote(c *gin.Context) {
 	}
 
 	var pdfReferenceUUID *uuid.UUID
+	var referenceType string
 	if req.PDFReference != nil {
 		if err := req.PDFReference.Validate(&bookRow.Book); err != nil {
 			c.Error(err)
@@ -405,17 +565,36 @@ func createNote(c *gin.Context) {
 		}
 
 		pdfReferenceUUID = &pdfReference.ID
+		referenceType = "pdf"
 	}
 
-	note, err := cfg.Queries.CreateNote(c, repository.CreateNoteParams{BookID: bookRow.Book.ID, UserID: dbUser.ID, ReferenceDataPdfID: pdfReferenceUUID, Content: &req.Content, Color: req.Color})
+	note, err := cfg.Queries.CreateNote(c, repository.CreateNoteParams{ID: uuid.New(), BookID: bookRow.Book.ID, UserID: dbUser.ID, ReferenceDataPdfID: pdfReferenceUUID, Content: &req.Content, Color: req.Color, ReferenceType: &referenceType})
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, note)
+	noteWithReference := NoteWithReference{Note: note}
+	if pdfReferenceUUID != nil {
+		noteWithReference.PDFReference = &repository.PdfReference{ID: *pdfReferenceUUID, PageNumber: int16(req.PDFReference.PageNumber), XStart: req.PDFReference.XStart, XEnd: req.PDFReference.XEnd, YStart: req.PDFReference.YStart, YEnd: req.PDFReference.YEnd}
+	}
+
+	c.JSON(http.StatusCreated, noteWithReference)
 }
 
+// @Summary Get notes for a book
+// @Description Retrieve all notes for a specific book by the authenticated user
+// @Tags Notes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param book_id path string true "Book ID" Format(uuid)
+// @Success 200 {array} NoteWithReference
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /books/{book_id}/notes [get]
 func getNotes(c *gin.Context) {
 	bookID := c.Param("book_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
@@ -435,9 +614,23 @@ func getNotes(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, notes)
+	notesWithReferences := convertNotesToNotesWithReferences(notes)
+	c.JSON(http.StatusOK, notesWithReferences)
 }
 
+// @Summary Delete a note
+// @Description Delete a specific note by ID
+// @Tags Notes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param note_id path string true "Note ID" Format(uuid)
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /notes/{note_id} [delete]
 func deleteNote(c *gin.Context) {
 	noteID := c.Param("note_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
@@ -452,14 +645,15 @@ func deleteNote(c *gin.Context) {
 		return
 	}
 
-	note, err := cfg.Queries.GetNoteByID(c, uuidNoteID)
+	// First verify the note belongs to the user
+	noteRow, err := cfg.Queries.GetNoteByID(c, uuidNoteID)
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	if note.UserID != dbUser.ID {
-		c.Error(NewHttpError("not an owner", "access denied", http.StatusForbidden))
+	if noteRow.Note.UserID != dbUser.ID {
+		c.Error(NewHttpError("not authorized to delete this note", "access denied", http.StatusForbidden))
 		return
 	}
 
@@ -468,14 +662,32 @@ func deleteNote(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Note deleted successfully"})
+	c.JSON(http.StatusOK, SuccessResponse{
+		Message: "Note deleted successfully",
+	})
 }
 
+// UpdateNoteRequest represents the request body for updating a note
 type UpdateNoteRequest struct {
-	Content *string `json:"content"`
-	Color   *string `json:"color"`
+	Content *string `json:"content,omitempty" example:"Updated note content"`
+	Color   *string `json:"color,omitempty" example:"#ff0000"`
 }
 
+// @Summary Update a note
+// @Description Update the content and/or color of a specific note
+// @Tags Notes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param note_id path string true "Note ID" Format(uuid)
+// @Param request body UpdateNoteRequest true "Note update request"
+// @Success 200 {object} repository.Note
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /notes/{note_id} [patch]
 func updateNote(c *gin.Context) {
 	noteID := c.Param("note_id")
 	dbUser, err := auth.GetDBUserFromRequest(c)
@@ -490,13 +702,13 @@ func updateNote(c *gin.Context) {
 		return
 	}
 
-	note, err := cfg.Queries.GetNoteByID(c, uuidNoteID)
+	noteRow, err := cfg.Queries.GetNoteByID(c, uuidNoteID)
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	if note.UserID != dbUser.ID {
+	if noteRow.Note.UserID != dbUser.ID {
 		c.Error(NewHttpError("not an owner", "access denied", http.StatusForbidden))
 		return
 	}
@@ -509,8 +721,8 @@ func updateNote(c *gin.Context) {
 
 	var updateNoteParams repository.UpdateNoteParams
 	updateNoteParams.ID = uuidNoteID
-	updateNoteParams.Color = note.Color
-	updateNoteParams.Content = note.Content
+	updateNoteParams.Color = noteRow.Note.Color
+	updateNoteParams.Content = noteRow.Note.Content
 
 	if req.Content != nil {
 		updateNoteParams.Content = req.Content
@@ -520,11 +732,11 @@ func updateNote(c *gin.Context) {
 		updateNoteParams.Color = req.Color
 	}
 
-	note, err = cfg.Queries.UpdateNote(c, updateNoteParams)
+	noteRow.Note, err = cfg.Queries.UpdateNote(c, updateNoteParams)
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusOK, note)
+	c.JSON(http.StatusOK, noteRow.Note)
 }

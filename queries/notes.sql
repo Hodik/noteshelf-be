@@ -1,11 +1,16 @@
--- name: GetNotesForBookUser :one
-SELECT * FROM notes 
+-- name: GetNotesForBookUser :many
+SELECT sqlc.embed(notes), pdf_references.id, pdf_references.page_number, pdf_references.x_start, pdf_references.x_end, pdf_references.y_start, pdf_references.y_end
+FROM notes 
 LEFT JOIN pdf_references on notes.reference_data_pdf = pdf_references.id
 WHERE book_id = sqlc.arg(book_id) and user_id = sqlc.arg(user_id)
 ORDER BY added_at DESC;
 
 -- name: GetNoteByID :one
-SELECT * FROM notes WHERE id = sqlc.arg(id);
+SELECT sqlc.embed(notes), pdf_references.id, pdf_references.page_number, pdf_references.x_start, pdf_references.x_end, pdf_references.y_start, pdf_references.y_end
+FROM notes 
+LEFT JOIN pdf_references on notes.reference_data_pdf = pdf_references.id
+WHERE notes.id = sqlc.arg(id)
+LIMIT 1;
 
 -- name: CreatePDFReference :one
 INSERT INTO pdf_references (id, page_number, x_start, x_end, y_start, y_end)

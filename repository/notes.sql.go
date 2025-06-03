@@ -7,7 +7,6 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -99,28 +98,49 @@ func (q *Queries) DeleteNote(ctx context.Context, id uuid.UUID) error {
 }
 
 const getNoteByID = `-- name: GetNoteByID :one
-SELECT id, book_id, user_id, content, color, added_at, updated_at, reference_type, reference_data_pdf FROM notes WHERE id = $1
+SELECT notes.id, notes.book_id, notes.user_id, notes.content, notes.color, notes.added_at, notes.updated_at, notes.reference_type, notes.reference_data_pdf, pdf_references.id, pdf_references.page_number, pdf_references.x_start, pdf_references.x_end, pdf_references.y_start, pdf_references.y_end
+FROM notes 
+LEFT JOIN pdf_references on notes.reference_data_pdf = pdf_references.id
+WHERE notes.id = $1
+LIMIT 1
 `
 
-func (q *Queries) GetNoteByID(ctx context.Context, id uuid.UUID) (Note, error) {
+type GetNoteByIDRow struct {
+	Note       Note       `json:"note"`
+	ID         *uuid.UUID `json:"id"`
+	PageNumber *int16     `json:"page_number"`
+	XStart     *float32   `json:"x_start"`
+	XEnd       *float32   `json:"x_end"`
+	YStart     *float32   `json:"y_start"`
+	YEnd       *float32   `json:"y_end"`
+}
+
+func (q *Queries) GetNoteByID(ctx context.Context, id uuid.UUID) (GetNoteByIDRow, error) {
 	row := q.db.QueryRow(ctx, getNoteByID, id)
-	var i Note
+	var i GetNoteByIDRow
 	err := row.Scan(
+		&i.Note.ID,
+		&i.Note.BookID,
+		&i.Note.UserID,
+		&i.Note.Content,
+		&i.Note.Color,
+		&i.Note.AddedAt,
+		&i.Note.UpdatedAt,
+		&i.Note.ReferenceType,
+		&i.Note.ReferenceDataPdf,
 		&i.ID,
-		&i.BookID,
-		&i.UserID,
-		&i.Content,
-		&i.Color,
-		&i.AddedAt,
-		&i.UpdatedAt,
-		&i.ReferenceType,
-		&i.ReferenceDataPdf,
+		&i.PageNumber,
+		&i.XStart,
+		&i.XEnd,
+		&i.YStart,
+		&i.YEnd,
 	)
 	return i, err
 }
 
-const getNotesForBookUser = `-- name: GetNotesForBookUser :one
-SELECT notes.id, book_id, user_id, content, color, added_at, updated_at, reference_type, reference_data_pdf, pdf_references.id, page_number, x_start, x_end, y_start, y_end FROM notes 
+const getNotesForBookUser = `-- name: GetNotesForBookUser :many
+SELECT notes.id, notes.book_id, notes.user_id, notes.content, notes.color, notes.added_at, notes.updated_at, notes.reference_type, notes.reference_data_pdf, pdf_references.id, pdf_references.page_number, pdf_references.x_start, pdf_references.x_end, pdf_references.y_start, pdf_references.y_end
+FROM notes 
 LEFT JOIN pdf_references on notes.reference_data_pdf = pdf_references.id
 WHERE book_id = $1 and user_id = $2
 ORDER BY added_at DESC
@@ -132,44 +152,49 @@ type GetNotesForBookUserParams struct {
 }
 
 type GetNotesForBookUserRow struct {
-	ID               uuid.UUID  `json:"id"`
-	BookID           uuid.UUID  `json:"book_id"`
-	UserID           string     `json:"user_id"`
-	Content          *string    `json:"content"`
-	Color            *string    `json:"color"`
-	AddedAt          time.Time  `json:"added_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	ReferenceType    *string    `json:"reference_type"`
-	ReferenceDataPdf *uuid.UUID `json:"reference_data_pdf"`
-	ID_2             *uuid.UUID `json:"id_2"`
-	PageNumber       *int16     `json:"page_number"`
-	XStart           *float32   `json:"x_start"`
-	XEnd             *float32   `json:"x_end"`
-	YStart           *float32   `json:"y_start"`
-	YEnd             *float32   `json:"y_end"`
+	Note       Note       `json:"note"`
+	ID         *uuid.UUID `json:"id"`
+	PageNumber *int16     `json:"page_number"`
+	XStart     *float32   `json:"x_start"`
+	XEnd       *float32   `json:"x_end"`
+	YStart     *float32   `json:"y_start"`
+	YEnd       *float32   `json:"y_end"`
 }
 
-func (q *Queries) GetNotesForBookUser(ctx context.Context, arg GetNotesForBookUserParams) (GetNotesForBookUserRow, error) {
-	row := q.db.QueryRow(ctx, getNotesForBookUser, arg.BookID, arg.UserID)
-	var i GetNotesForBookUserRow
-	err := row.Scan(
-		&i.ID,
-		&i.BookID,
-		&i.UserID,
-		&i.Content,
-		&i.Color,
-		&i.AddedAt,
-		&i.UpdatedAt,
-		&i.ReferenceType,
-		&i.ReferenceDataPdf,
-		&i.ID_2,
-		&i.PageNumber,
-		&i.XStart,
-		&i.XEnd,
-		&i.YStart,
-		&i.YEnd,
-	)
-	return i, err
+func (q *Queries) GetNotesForBookUser(ctx context.Context, arg GetNotesForBookUserParams) ([]GetNotesForBookUserRow, error) {
+	rows, err := q.db.Query(ctx, getNotesForBookUser, arg.BookID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetNotesForBookUserRow
+	for rows.Next() {
+		var i GetNotesForBookUserRow
+		if err := rows.Scan(
+			&i.Note.ID,
+			&i.Note.BookID,
+			&i.Note.UserID,
+			&i.Note.Content,
+			&i.Note.Color,
+			&i.Note.AddedAt,
+			&i.Note.UpdatedAt,
+			&i.Note.ReferenceType,
+			&i.Note.ReferenceDataPdf,
+			&i.ID,
+			&i.PageNumber,
+			&i.XStart,
+			&i.XEnd,
+			&i.YStart,
+			&i.YEnd,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateNote = `-- name: UpdateNote :one
